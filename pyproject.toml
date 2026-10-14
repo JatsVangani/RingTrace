@@ -29,6 +29,7 @@ ringtrace-engine = { workspace = true }
 ringtrace-agent = { workspace = true }
 
 [tool.ruff]
+src = ["core/src", "engine/src", "agent/src"]
 line-length = 100
 target-version = "py311"
 
