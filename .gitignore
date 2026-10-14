@@ -1,0 +1,23 @@
+
+scratch/
+plan-docs/
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# Data
+data/
+*.parquet
+
+# Environment
+.env
+.env.local
+
