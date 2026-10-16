@@ -797,6 +797,7 @@ dependencies = [
     { name = "falkordb" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "redis" },
 ]
 
 [package.metadata]
@@ -805,6 +806,7 @@ requires-dist = [
     { name = "falkordb" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "redis", specifier = ">=8.1.0" },
 ]
 
 [[package]]

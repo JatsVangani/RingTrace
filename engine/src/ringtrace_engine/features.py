@@ -7,20 +7,27 @@ not what their money does.
 import polars as pl
 
 DAY_MS = 86_400_000
+
+
 def legs(transfers: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """ Each transfer seen from both ends: (outgoing, incoming), keyed by 'acct' """
+    """Each transfer seen from both ends: (outgoing, incoming), keyed by 'acct'"""
     cols = ("ts_ms", "amount_usd")
     outgoing = transfers.select(*cols, acct="src", cp="dst", currency="currency_paid")
     incoming = transfers.select(*cols, acct="dst", cp="src", currency="currency_received")
     return outgoing, incoming
 
+
 def max_daily_counterparties(leg_df: pl.DataFrame, name: str) -> pl.DataFrame:
-    """ Most distinct counterparties on my single (UTC) day."""
+    """Most distinct counterparties on my single (UTC) day."""
     per_day = leg_df.group_by("acct", pl.col("ts_ms") // DAY_MS).agg(pl.col("cp").n_unique())
     return per_day.group_by("acct").agg(pl.col("cp").max().alias(name))
 
+
 def forwarding(outgoing: pl.DataFrame, incoming: pl.DataFrame) -> pl.DataFrame:
-    """ Match each debit to the latest credit before it: how long money sat, and whether it left in a different currency from the one it arrived in."""
+    """
+    Match each debit to the latest credit before it: how long money sat, and
+    whether it left in a different currency from the one it arrived in.
+    """
     credits = incoming.select("acct", in_ts="ts_ms", in_currency="currency").sort("acct", "in_ts")
     debits = outgoing.select("acct", "ts_ms", "currency").sort("acct", "ts_ms")
     matched = debits.join_asof(
@@ -28,8 +35,9 @@ def forwarding(outgoing: pl.DataFrame, incoming: pl.DataFrame) -> pl.DataFrame:
     )
     return matched.group_by("acct").agg(
         ((pl.col("ts_ms") - pl.col("in_ts")) / 60_000).median().alias("dwell_median_min"),
-        (pl.col("currency") != pl.col("in_currency")).mean().alias("currency_switch_share")
+        (pl.col("currency") != pl.col("in_currency")).mean().alias("currency_switch_share"),
     )
+
 
 def account_features(transfers: pl.DataFrame) -> pl.DataFrame:
     outgoing, incoming = legs(transfers)

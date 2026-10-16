@@ -28,11 +28,13 @@ MATCH_ON = [
     "format",
 ]
 
+
 def with_keys(txns: pl.DataFrame) -> pl.DataFrame:
     return txns.with_columns(
         acct_key("src_bank", "src_account").alias("src"),
         acct_key("dst_bank", "dst_account").alias("dst"),
     )
+
 
 def read_patterns(raw_dir: Path, dataset: str) -> pl.DataFrame:
     """One row per transaction line in the patterns file, tagged with ring_id and pattern."""
@@ -58,6 +60,7 @@ def read_patterns(raw_dir: Path, dataset: str) -> pl.DataFrame:
         pl.Series("pattern", patterns),
     )
 
+
 def ground_truth(raw_dir: Path, out_dir: Path, dataset: str = "HI-Small") -> dict[str, int]:
     flagged = with_keys(read_transactions(raw_dir, dataset).filter(pl.col("is_laundering") == 1))
     ring_txns = with_keys(read_patterns(raw_dir, dataset))
@@ -74,11 +77,10 @@ def ground_truth(raw_dir: Path, out_dir: Path, dataset: str = "HI-Small") -> dic
     )
 
     members = (
-        matched.select("ring_id", "pattern", pl.concat_list("src", "dst")
-                       .alias("acct_key"))
-                       .explode("acct_key")
-                       .unique()
-                       .sort("ring_id", "acct_key")
+        matched.select("ring_id", "pattern", pl.concat_list("src", "dst").alias("acct_key"))
+        .explode("acct_key")
+        .unique()
+        .sort("ring_id", "acct_key")
     )
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -91,6 +93,7 @@ def ground_truth(raw_dir: Path, out_dir: Path, dataset: str = "HI-Small") -> dic
         "outside_rings": laundering_txns["ring_id"].null_count(),
     }
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Patterns file -> ground truth Parquet")
     parser.add_argument("--raw", type=Path, default=Path("data/ibm-aml"))
@@ -100,6 +103,7 @@ def main() -> None:
 
     for name, count in ground_truth(args.raw, args.out, args.dataset).items():
         print(f"{name}: {count:,}")
+
 
 if __name__ == "__main__":
     main()

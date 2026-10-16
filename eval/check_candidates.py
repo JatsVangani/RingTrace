@@ -10,8 +10,9 @@ import polars as pl
 
 from ringtrace_engine.candidates import top_candidates
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description= "Top-N candidates vs ground truth")
+    parser = argparse.ArgumentParser(description="Top-N candidates vs ground truth")
     parser.add_argument("--data", type=Path, default=Path("data/prepared"))
     parser.add_argument("--labels", type=Path, default=Path("data/labels"))
     parser.add_argument("--top", type=int, default=50)
@@ -28,7 +29,7 @@ def main() -> None:
     print(f"  any laundering:    {top['acct_key'].is_in(illicit.implode()).sum()}")
     print(f"  distinct rings:    {hits['ring_id'].n_unique()}")
     print(hits.group_by("pattern").agg(pl.col("ring_id").n_unique().alias("rings")).sort("pattern"))
-    
+
 
 if __name__ == "__main__":
     main()
