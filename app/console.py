@@ -71,6 +71,20 @@ def candidates(n: int = 30) -> list[dict]:
     ]
 
 
+def case_of(acct_key: str) -> str | None:
+    """The case this account seeded, else the latest one it is a member of, if any."""
+    rows = (
+        graph()
+        .ro_query(
+            "MATCH (c:Case)-[:INCLUDES]->(:Account {acct_key: $k}) "
+            "RETURN c.case_id ORDER BY c.seed = $k DESC, c.updated_at DESC LIMIT 1",
+            {"k": acct_key},
+        )
+        .result_set
+    )
+    return rows[0][0] if rows else None
+
+
 def ring_dot(case: dict) -> str:
     """Members coloured by role, seed outlined, edges from the transfers among them."""
     members = {m["acct_key"]: m["role"] for m in case["members"]}
@@ -209,7 +223,8 @@ def show_account(acct_key: str) -> None:
     b1, b2, _ = st.columns([1, 1, 2])
     if b1.button("Investigate this account", type="primary", key="inv-account"):
         run_investigation(acct_key)
-    if st.session_state.get("case_id") and b2.button("Open its case", key="open-case"):
+    if (case_id := case_of(acct_key)) and b2.button("Open its case", key="open-case"):
+        st.session_state["case_id"] = case_id
         st.session_state["account"] = None
         st.rerun()
     st.markdown("**Counterparties** (one-off links first)")
