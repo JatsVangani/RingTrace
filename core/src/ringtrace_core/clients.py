@@ -3,7 +3,6 @@
 from functools import lru_cache
 
 import redis
-from anthropic import Anthropic
 from falkordb import FalkorDB, Graph
 
 from ringtrace_core.config import get_settings
@@ -17,11 +16,3 @@ def get_db() -> FalkorDB:
 
 def get_graph() -> Graph:
     return get_db().select_graph(get_settings().graph_name)
-
-
-@lru_cache
-def get_anthropic() -> Anthropic:
-    key = get_settings().anthropic_api_key
-    if not key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set; add it to .env")
-    return Anthropic(api_key=key)
