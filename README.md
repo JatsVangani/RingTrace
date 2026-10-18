@@ -66,6 +66,10 @@ cp .env.example .env            # defaults work for the local setup
 docker compose -f infra/local/docker-compose.yml up -d
 ```
 
+Compose starts only the two backing services below. The loader, the investigator and the
+console run on the host with `uv` (see Dataset and Run), so the full path is: compose up,
+download the dataset, run the four scripts, then `uv run streamlit run app/console.py`.
+
 The compose file starts two services:
 
 - `falkordb` on :6379 (browser on :3000).
