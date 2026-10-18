@@ -1,5 +1,8 @@
 """One candidate, end to end: gather evidence -> model decides -> case built and saved."""
 
+import time
+from collections.abc import Callable
+
 from falkordb import Graph
 
 from ringtrace_agent.prompts import DECISION_SCHEMA, PATTERNS, SYSTEM
@@ -19,12 +22,20 @@ def decide(facts: str) -> dict:
     return d
 
 
-def investigate(graph: Graph, seed: str, write: bool = True) -> dict:
-    ev = evidence.gather(graph, seed)
+def investigate(
+    graph: Graph, seed: str, write: bool = True, on_step: Callable[[dict], None] | None = None
+) -> dict:
+    ev = evidence.gather(graph, seed, on_step=on_step)
     if ev is None:
         return {"seed": seed, "outcome": "no_such_account"}
     facts = evidence.facts(ev)
+    started = time.monotonic()
     decision = decide(facts)
+    if on_step:
+        verdict = f"ring ({decision['pattern']})" if decision["is_ring"] else "not a ring"
+        on_step(
+            {"tool": "model", "summary": verdict, "ms": round((time.monotonic() - started) * 1000)}
+        )
     shape, _ = evidence.shape_reading(ev)
     if shape in HARD_EVIDENCE:  # a measured cycle, collector or hub beats the model's reading
         decision["is_ring"], decision["pattern"] = True, shape

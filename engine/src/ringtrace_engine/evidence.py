@@ -5,6 +5,7 @@ call is timed and summarised into `trace`, so a case can show how it was built.
 """
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from falkordb import Graph
@@ -54,7 +55,10 @@ def span_h(rows: list[dict]) -> float:
     return (max(ts) - min(ts)) / HOUR_MS if len(ts) > 1 else 0.0
 
 
-def gather(graph: Graph, seed: str, window_h: int = 96) -> Evidence | None:
+def gather(
+    graph: Graph, seed: str, window_h: int = 96, on_step: Callable[[dict], None] | None = None
+) -> Evidence | None:
+    """Run every tool once; 'on_step' hears each trace entry as it lands (for a live UI)."""
     trace: list[dict] = []
 
     def step(tool: str, args: dict, fn, summary):
@@ -62,6 +66,8 @@ def gather(graph: Graph, seed: str, window_h: int = 96) -> Evidence | None:
         result = fn()
         ms = round((time.monotonic() - started) * 1000)
         trace.append({"tool": tool, "args": args, "summary": summary(result), "ms": ms})
+        if on_step:
+            on_step(trace[-1])
         return result
 
     profile = step(
