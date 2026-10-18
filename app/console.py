@@ -102,7 +102,11 @@ def run_investigation(seed: str) -> None:
         def on_step(t: dict) -> None:
             st.write(f"`{t['tool']}`  {t['summary']}  ({t['ms']} ms)")
 
-        result = investigate(graph(), seed, on_step=on_step)
+        try:
+            result = investigate(graph(), seed, on_step=on_step)
+        except Exception as e:  # show the analyst what went wrong; keep the app up
+            status.update(label=f"Investigation failed: {e}", state="error")
+            return
         if result.get("outcome") == "no_such_account":
             status.update(label=f"No account {seed}", state="error")
             return
