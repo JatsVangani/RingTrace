@@ -23,6 +23,7 @@ class Evidence:
     collectors: list[dict]  # accounts that 2+ of the seed's recipients pay
     sources: list[dict]  # accounts that paid 2+ of the seed's senders
     owners: list[dict]
+    memory: list[dict]
     trace: list[dict] = field(default_factory=list)
 
     @property
@@ -115,13 +116,24 @@ def gather(graph: Graph, seed: str, window_h: int = 96) -> Evidence | None:
             ),
         )
     members = [seed, *out_keys, *in_keys]
+    memory = step(
+        "recall",
+        {"acct_keys": members},
+        lambda: queries.recall(graph, members),
+        lambda rows: (
+            f"{len(rows)} earlier cases, "
+            + ", ".join(f"{r['case_id']} {r['status']} ({len(r['hits'])} shared)" for r in rows[:3])
+            if rows
+            else "no earlier cases"
+        ),
+    )
     owners = step(
         "shared_owner",
         {"acct_keys": members},
         lambda: queries.shared_owner(graph, members),
         lambda rows: f"{len(rows)} shared owners",
     )
-    return Evidence(seed, profile, flow, cycles, collectors, sources, owners, trace)
+    return Evidence(seed, profile, flow, cycles, collectors, sources, owners, memory, trace)
 
 
 def shape_reading(ev: Evidence) -> tuple[str, str]:
@@ -204,18 +216,19 @@ def facts(ev: Evidence) -> str:
     )
     members = {ev.seed, *(r["acct_key"] for r in ev.flow if r["hop"] == 1)}
     shared = [o for o in ev.owners if len(set(o["accounts"]) & members) >= 2]
-    low = sum((r["degree"] or 0) <= 5 for r in ev.flow)
-    n = max(len(ev.flow), 1)
-    lines.append(
-        f"Neighbourhood: {len(ev.flow)} accounts reached within 2 hops; {low / n:.0%} of them have "
-        f"5 or fewer counterparties (single-purpose); average risk score of reached accounts "
-        f"{sum(r['risk_score'] or 0 for r in ev.flow) / n:.2f} "
-        f"(flagged account: {p.get('risk_score')})."
-    )
-    members = {ev.seed, *(r["acct_key"] for r in ev.flow if r["hop"] == 1)}
-    shared = [o for o in ev.owners if len(set(o["accounts"]) & members) >= 2]
     if shared:
         lines.append(f"Ownership: {len(shared)} owner(s) hold two or more of these accounts.")
+    for m in ev.memory[:2]:
+        status = {
+            "closed_tp": "confirmed by an analyst as a laundering ring",
+            "closed_fp": "closed by an analyst as a false positive",
+        }.get(m["status"], "still open, not yet reviewed")
+        lines.append(
+            f"Memory: earlier case {m['case_id']} ({m['pattern']}) already includes "
+            f"{len(m['hits'])} of these accounts; {status}."
+        )
+    if not ev.memory:
+        lines.append("Memory: no earlier case touches these accounts.")
     pattern, why = shape_reading(ev)
     lines.append(f"Engine's shape reading: {pattern} ({why}).")
     return "\n".join(lines)

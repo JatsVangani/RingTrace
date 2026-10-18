@@ -183,6 +183,27 @@ def convergence(graph: Graph, acct_keys: list[str], direction: str = "out") -> l
     return [dict(zip(keys, r, strict=True)) for r in rows]
 
 
+def recall(graph: Graph, acct_keys: list[str]) -> list[dict]:
+    """Earlier cases that include any of these accounts, with the analyst's verdict if any."""
+    rows = _rows(
+        graph,
+        """
+        UNWIND $keys AS k
+        MATCH (c:Case)-[:INCLUDES]->(a:Account {acct_key: k})
+        WITH c, collect(DISTINCT a.acct_key) AS hits
+        OPTIONAL MATCH (v:Verdict)-[:ON]->(c)
+        WITH c, hits, v ORDER BY v.ts DESC
+        WITH c, hits, collect(v.notes)[0] AS notes
+        RETURN c.case_id, c.status, c.pattern, c.score, c.updated_at, hits, notes
+        ORDER BY c.updated_at DESC
+        LIMIT $limit
+        """,
+        {"keys": acct_keys, "limit": MAX_ROWS},
+    )
+    keys = ("case_id", "status", "pattern", "score", "updated_at", "hits", "notes")
+    return [dict(zip(keys, r, strict=True)) for r in rows]
+
+
 def shared_owner(graph: Graph, acct_keys: list[str]) -> list[dict]:
     """Owner of these accounts that also own other accounts"""
     rows = _rows(

@@ -118,6 +118,13 @@ def findings_of(ev: Evidence, members: set[str]) -> list[dict]:
         if len(inside) >= 2:
             found.append(("SHARED_OWNER", f"entity {o['entity_id']} owns {len(inside)} members"))
             break
+    for m in ev.memory:
+        inside = [a for a in m["hits"] if a in members]
+        if m["status"] == "closed_tp" and inside:
+            found.append(
+                ("PRIOR_CONFIRMED_LINK", f"{len(inside)} members in confirmed case {m['case_id']}")
+            )
+            break
     return [
         {"code": code, "detail": detail, "weight": REASON_CODES[code][0]} for code, detail in found
     ]
@@ -236,3 +243,103 @@ def save(graph: Graph, ev: Evidence, decision: dict, case: dict | None, model: s
         },
     )
     return {"inv_id": inv_id, "case_id": case_id, "merged": bool(existing)}
+
+
+def record_verdict(graph: Graph, case_id: str, verdict: str, notes: str = "") -> bool:
+    """Close a case as a true (closed_tp) or false (closed_fp) positive; later recalls see it."""
+    if verdict not in ("closed_tp", "closed_fp"):
+        raise ValueError("verdict must be closed_tp or closed_fp")
+    rows = graph.query(
+        """
+        MATCH (c:Case {case_id: $id})
+        SET c.status = $verdict, c.updated_at = $now
+        CREATE (:Verdict {verdict: $verdict, notes: $notes, ts: $now})-[:ON]->(c)
+        RETURN c.case_id
+        """,
+        {"id": case_id, "verdict": verdict, "notes": notes, "now": int(time.time() * 1000)},
+    ).result_set
+    return bool(rows)
+
+
+def list_cases(graph: Graph, status: str | None = None, limit: int = 50) -> list[dict]:
+    """Cases for the queue, most money at risk first."""
+    rows = graph.ro_query(
+        """
+        MATCH (c:Case)
+        WHERE $status IS NULL OR c.status = $status
+        RETURN c.case_id, c.status, c.pattern, c.score, c.tier, c.value_at_risk_usd,
+               c.member_count, c.seed, c.updated_at
+        ORDER BY c.value_at_risk_usd DESC
+        LIMIT $limit
+        """,
+        {"status": status, "limit": limit},
+    ).result_set
+    keys = (
+        "case_id",
+        "status",
+        "pattern",
+        "score",
+        "tier",
+        "value_at_risk_usd",
+        "member_count",
+        "seed",
+        "updated_at",
+    )
+    return [dict(zip(keys, r, strict=True)) for r in rows]
+
+
+def get_case(graph: Graph, case_id: str) -> dict | None:
+    """One case with members, findings, verdicts and the investigations behind it."""
+    head = graph.ro_query(
+        "MATCH (c:Case {case_id: $id}) RETURN properties(c)", {"id": case_id}
+    ).result_set
+    if not head:
+        return None
+    members = graph.ro_query(
+        """
+        MATCH (c:Case {case_id: $id})-[m:INCLUDES]->(a:Account)-[:AT_BANK]->(b:Bank)
+        RETURN a.acct_key, m.role, b.name, b.country, a.risk_score, a.degree
+        ORDER BY m.role, a.acct_key
+        """,
+        {"id": case_id},
+    ).result_set
+    findings = graph.ro_query(
+        "MATCH (c:Case {case_id: $id})-[:EVIDENCE]->(f:Finding) RETURN f.code, f.text, f.weight "
+        "ORDER BY f.weight DESC",
+        {"id": case_id},
+    ).result_set
+    verdicts = graph.ro_query(
+        "MATCH (v:Verdict)-[:ON]->(c:Case {case_id: $id}) RETURN v.verdict, v.notes, v.ts "
+        "ORDER BY v.ts",
+        {"id": case_id},
+    ).result_set
+    trace = graph.ro_query(
+        """
+        MATCH (i:Investigation)-[:PRODUCED]->(c:Case {case_id: $id})
+        MATCH (i)-[s:STEP]->(t:ToolCall)
+        RETURN i.inv_id, i.seed, i.model, i.finished_at, i.analysis, s.n, t.tool, t.args_json,
+               t.result_summary, t.ms
+        ORDER BY i.finished_at, s.n
+        """,
+        {"id": case_id},
+    ).result_set
+    mkeys = ("acct_key", "role", "bank", "country", "risk_score", "degree")
+    tkeys = (
+        "inv_id",
+        "seed",
+        "model",
+        "finished_at",
+        "analysis",
+        "n",
+        "tool",
+        "args_json",
+        "summary",
+        "ms",
+    )
+    return {
+        **head[0][0],
+        "members": [dict(zip(mkeys, r, strict=True)) for r in members],
+        "findings": [{"code": c, "text": t, "weight": w} for c, t, w in findings],
+        "verdicts": [{"verdict": v, "notes": n, "ts": t} for v, n, t in verdicts],
+        "trace": [dict(zip(tkeys, r, strict=True)) for r in trace],
+    }
